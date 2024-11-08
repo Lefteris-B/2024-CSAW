@@ -1,12 +1,16 @@
-CSAW 2024 - SystemsGenesys Team
-Overview
+# CSAW 2024 - SystemsGenesys Team
+
+## Overview
 This repository contains projects developed by SystemsGenesys, mentored by Dr. Rantos Konstantinos, and led by team member Batzolis Eleftherios. These projects were crafted for the second stage of CSAW 2024 and explore hardware security vulnerabilities through malicious logic insertion and timing attacks on cryptographic systems.
 
-Projects
-1. Stealthy Logic: Keyboard Injection to Verilog State Machine Trojan for Conditional DoS
+## Projects
+
+## Stealthy Logic
+ Keyboard Injection to Verilog State Machine Trojan for Conditional DoS
+
 This project focuses on injecting a stealthy logic trojan into a Verilog-based hardware design to enable a conditional denial-of-service (DoS) attack.
 
-Methodology:
+### Methodology:
 
 The trojan monitors specific conditions, such as bit patterns in UART communication, to trigger a DoS by entering a malfunctioning state.
 We employed a BadUSB device (based on the STM32F072C8T6 microcontroller) to inject the trojan, leveraging its keystroke injection capabilities.
@@ -15,10 +19,12 @@ Impact:
 
 This attack is designed to render hardware unresponsive under specific input conditions.
 The DoS vulnerability occurs at the register-transfer level (RTL) and impacts the functionality by forcing hardware into a looped failure state.
-2. Cryptoleak: Subtle Timing Exploits for AES Key Extraction with Trojan Listeners
+
+## Cryptoleak: Subtle Timing Exploits for AES Key Extraction with Trojan Listeners
+
 This project demonstrates an attack on an AES encryption IP core using timing side-channels for covert AES key exfiltration.
 
-Methodology:
+### Methodology:
 
 The trojan modifies the AES Verilog core to introduce subtle clock signal variations that encode key bits.
 These variations are detected by a listener trojan on the host PC, which reconstructs the AES key based on timing shifts observed during encryption operations.
@@ -27,7 +33,7 @@ Impact:
 
 The attack allows for the exfiltration of AES keys without noticeable impact on functionality.
 This timing-based side-channel vulnerability operates at the RTL level and can expose critical encryption keys.
-Technical Approach
+## Technical Approach
 1. BadUSB Device
 Our keystroke injection tool, inspired by Hak5’s USB Rubber Ducky, is built on a STM32F072C8T6 microcontroller with a flash memory chip to emulate a mass storage device. Key features include:
 
@@ -41,19 +47,14 @@ Persona Pattern: Crafted prompts to align with the intent, allowing AI-assisted 
 Challenges and Vulnerability Exploits
 Bypassing AI Content Filtering: We explored ways to circumvent ChatGPT’s reinforcement learning and content moderation using obscure languages, such as Yucatec Maya, to bypass content restrictions in security research.
 Hardware Side-Channel Monitoring: Developed a flowchart and simulation model to collect timing data, detect timing shifts, and reconstruct AES keys.
-Key Results
+
+## Key Results
 Denial-of-Service (DoS) Attack:
 Trigger Mechanism: Specific UART input conditions cause the hardware to enter a failure state.
 Impact: Disrupts the functionality of target hardware, effectively causing a DoS condition.
 AES Key Extraction:
 Timing-based Key Leakage: Subtle clock modulation encodes key bits, which are extracted and decoded by the trojan.
 Difficulty in Detection: Minimal functional impact with highly covert data exfiltration.
-Repository Structure
-graphql
-Copy code
-├── src                    # Source files for Verilog modifications and trojan logic
-├── docs                   # Documentation and flowcharts for each attack stage
-├── hardware               # Schematics and BOM for the BadUSB device
-└── simulations            # Timing analysis and simulation data for AES key extraction
-References
+
+## References
 Prompt Engineering Examples: Examples and references used in prompt development can be found here and here.
