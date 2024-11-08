@@ -35,7 +35,7 @@ The attack allows for the exfiltration of AES keys without noticeable impact on 
 This timing-based side-channel vulnerability operates at the RTL level and can expose critical encryption keys.
 ## Technical Approach
 1. BadUSB Device
-Our keystroke injection tool, inspired by Hak5’s USB Rubber Ducky, is built on a STM32F072C8T6 microcontroller with a flash memory chip to emulate a mass storage device. Key features include:
+Our keystroke injection tool [(based on an open source project)](https://github.com/krakrukra/PocketAdmin) , inspired by Hak5’s USB Rubber Ducky, is built on a STM32F072C8T6 microcontroller with a flash memory chip to emulate a mass storage device. Key features include:
 
 Emulating human interface devices (HIDs) to avoid security flags.
 Executing preprogrammed payloads for automated system administration or attack scenarios.
