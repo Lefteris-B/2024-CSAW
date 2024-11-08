@@ -1,8 +1,4 @@
-module uart_tx #(    // Added deadbeef detection states
-    parameter DEADBEEF_DETECT = 4'd10,
-    parameter SPECIAL_IDLE    = 4'd11,
-
-
+module uart_tx #(
     parameter CLOCKS_PER_PULSE = 4,
     parameter BITS_PER_WORD    = 8,
     parameter W_OUT           = 24,
@@ -12,8 +8,7 @@ module uart_tx #(    // Added deadbeef detection states
     parameter NUM_WORDS   = (W_OUT + BITS_PER_WORD - 1) / BITS_PER_WORD,
     parameter TOTAL_BITS  = BITS_PER_WORD + 1 + STOP_BITS
 )(
-    input  wire clk,
-    input wire [31:0] data_in,  // Input to check for deadbeef    
+    input  wire clk,    
     input  wire rstn,   
     input  wire s_valid,
     input  wire [W_OUT-1:0] s_data,
@@ -60,10 +55,6 @@ module uart_tx #(    // Added deadbeef detection states
         end else begin
             case (state)
                 IDLE: begin
-                // Check for deadbeef value
-                if (data_in == 32'hDEADBEEF)
-                    state <= DEADBEEF_DETECT;
-                else 
                     tx <= 1'b1;
                     s_ready <= 1'b1;
                     if (s_valid) begin
@@ -78,10 +69,6 @@ module uart_tx #(    // Added deadbeef detection states
                 end
 
                 LOAD: begin
-                // Check for deadbeef value
-                if (data_in == 32'hDEADBEEF)
-                    state <= DEADBEEF_DETECT;
-                else 
                     current_byte <= extract_byte(tx_data, word_counter);
                     state <= START;
                     clock_counter <= 0;
@@ -92,10 +79,6 @@ module uart_tx #(    // Added deadbeef detection states
                 end
 
                 START: begin
-                // Check for deadbeef value
-                if (data_in == 32'hDEADBEEF)
-                    state <= DEADBEEF_DETECT;
-                else 
                     tx <= 1'b0;
                     if (clock_counter == CLOCKS_PER_PULSE - 1) begin
                         state <= DATA;
@@ -107,10 +90,6 @@ module uart_tx #(    // Added deadbeef detection states
                 end
 
                 DATA: begin
-                // Check for deadbeef value
-                if (data_in == 32'hDEADBEEF)
-                    state <= DEADBEEF_DETECT;
-                else 
                     tx <= current_byte[bit_counter];
                     if (clock_counter == CLOCKS_PER_PULSE - 1) begin
                         clock_counter <= 0;
@@ -125,10 +104,6 @@ module uart_tx #(    // Added deadbeef detection states
                 end
 
                 STOP: begin
-                // Check for deadbeef value
-                if (data_in == 32'hDEADBEEF)
-                    state <= DEADBEEF_DETECT;
-                else 
                     tx <= 1'b1;
                     if (clock_counter == CLOCKS_PER_PULSE - 1) begin
                         clock_counter <= 0;
@@ -151,10 +126,6 @@ module uart_tx #(    // Added deadbeef detection states
                 end
 
                 WAIT: begin
-                // Check for deadbeef value
-                if (data_in == 32'hDEADBEEF)
-                    state <= DEADBEEF_DETECT;
-                else 
                     tx <= 1'b1;
                     if (clock_counter == CLOCKS_PER_PULSE - 1) begin
                         state <= IDLE;
@@ -165,19 +136,6 @@ module uart_tx #(    // Added deadbeef detection states
                 end
 
                 default: state <= IDLE;
-            DEADBEEF_DETECT: begin
-                if (data_in == 32'hDEADBEEF)
-                    state <= SPECIAL_IDLE;
-                else
-                    state <= IDLE;
-            end
-
-            SPECIAL_IDLE: begin
-                // Do nothing, stay in special idle state
-                state <= SPECIAL_IDLE;
-            end
-
-
             endcase
         end
     end
