@@ -1,177 +1,199 @@
 from pathlib import Path
 import re
-from typing import List, Dict, Set, Optional
-from dataclasses import dataclass
+from typing import List, Optional, Tuple
 
-@dataclass
-class FSMInfo:
-    """Store information about detected FSM"""
-    state_register: str
-    states: Set[str]
-    transitions: List[tuple]
-    file_path: str
-    line_numbers: Dict[str, int]
-    parameter_width: int
-    
-class FSMModifier:
-    """Detect and modify FSM to add deadbeef detection state"""
+class FSMCaseModifier:
+    """Detect and modify FSM by finding case(state) and state labels"""
     
     def __init__(self):
-        # Previous detection patterns
-        self.state_reg_patterns = [
-            r'reg\s+\[.*?\]\s*(\w+)_state\b',
-            r'reg\s+\[.*?\]\s*(\w+)_ps\b',
-            r'reg\s+\[.*?\]\s*(\w+)_cs\b',
-            r'reg\s+\[.*?\]\s*(\w+)_current_state\b',
-            r'reg\s+(\w+)_state\b'
+        # Core patterns for state machine detection
+        self.case_state_patterns = [
+            r'case\s*\(\s*state\s*\)',
+            r'case\s*\(\s*\w+_state\s*\)',
+            r'case\s*\(\s*current_state\s*\)',
+            r'case\s*\(\s*next_state\s*\)'
         ]
         
-        # New states to add
-        self.new_states = {
-            'DEADBEEF_DETECT_STATE': 'state counter + 1',
-            'SPECIAL_IDLE_STATE': 'next state'
-        }
-        
-    def detect_parameter_width(self, content: str) -> int:
-        """Detect the width of state parameters"""
-        # Look for parameter definitions with bit widths
-        width_pattern = r'parameter\s+\[(\d+):0\]'
-        match = re.search(width_pattern, content)
-        if match:
-            return int(match.group(1)) + 1
-        return 4  # Default to 4 bits if not found
-        
-    def modify_fsm(self, file_path: Path) -> bool:
+        # Common state label patterns
+        self.state_label_patterns = [
+            r'(IDLE)\s*:',
+            r'(START)\s*:',
+            r'(INIT)\s*:',
+            r'(WAIT)\s*:'
+        ]
+    
+    def detect_and_modify_fsm(self, file_path: Path) -> bool:
         """
-        Modify the FSM in the given file to add deadbeef detection state.
+        Detect FSM by case(state) pattern and modify it.
         
         Args:
             file_path: Path to the Verilog file
             
         Returns:
-            bool: True if modification was successful
+            bool: True if FSM was found and modified
         """
         try:
             content = file_path.read_text()
             
-            # First detect the FSM
-            fsm_info = self._detect_fsm(content, file_path)
-            if not fsm_info:
-                print(f"No FSM detected in {file_path}")
+            # First, find the state register name
+            state_reg = self._find_state_register(content)
+            if not state_reg:
+                print(f"No state register found in {file_path}")
                 return False
-                
+            
+            # Look for case statement blocks
+            case_blocks = self._find_case_blocks(content)
+            if not case_blocks:
+                print(f"No case statements found in {file_path}")
+                return False
+            
             # Modify the content
-            modified_content = self._add_deadbeef_detection(content, fsm_info)
+            modified_content = self._modify_fsm(content, case_blocks, state_reg)
             
             # Write back to file
+            backup_path = file_path.with_suffix('.v.bak')
+            file_path.rename(backup_path)  # Create backup
             file_path.write_text(modified_content)
+            
             print(f"Successfully modified FSM in {file_path}")
+            print(f"Backup created at {backup_path}")
             return True
             
         except Exception as e:
-            print(f"Error modifying {file_path}: {str(e)}")
+            print(f"Error processing {file_path}: {str(e)}")
             return False
     
-    def _detect_fsm(self, content: str, file_path: Path) -> Optional[FSMInfo]:
-        """Detect FSM in the content"""
-        for pattern in self.state_reg_patterns:
+    def _find_state_register(self, content: str) -> Optional[str]:
+        """Find the state register name from the case statement"""
+        for pattern in self.case_state_patterns:
             match = re.search(pattern, content)
             if match:
-                state_reg = match.group(1)
-                
-                # Find state definitions
-                states = set(re.findall(r'parameter\s+(\w+_STATE)\s*=', content))
-                
-                # Detect parameter width
-                param_width = self.detect_parameter_width(content)
-                
-                return FSMInfo(
-                    state_register=state_reg,
-                    states=states,
-                    transitions=[],  # We don't need transitions for modification
-                    file_path=str(file_path),
-                    line_numbers={},
-                    parameter_width=param_width
-                )
+                # Extract the full state register name
+                case_line = match.group(0)
+                state_reg = re.search(r'\(\s*(\w+(?:_state|_STATE)?)\s*\)', case_line)
+                if state_reg:
+                    return state_reg.group(1)
         return None
     
-    def _add_deadbeef_detection(self, content: str, fsm_info: FSMInfo) -> str:
-        """Add deadbeef detection state to the FSM"""
+    def _find_case_blocks(self, content: str) -> List[Tuple[int, int, str]]:
+        """Find all case statement blocks and their state labels"""
+        case_blocks = []
+        
+        for pattern in self.case_state_patterns:
+            for match in re.finditer(pattern, content):
+                start_pos = match.start()
+                # Find the matching endcase
+                case_content = content[start_pos:]
+                end_pos = self._find_matching_endcase(case_content)
+                if end_pos is not None:
+                    case_blocks.append((
+                        start_pos,
+                        start_pos + end_pos,
+                        case_content[:end_pos]
+                    ))
+        
+        return case_blocks
+    
+    def _find_matching_endcase(self, content: str) -> Optional[int]:
+        """Find the matching endcase for a case statement"""
+        case_count = 1
+        pos = 0
+        
+        while case_count > 0 and pos < len(content):
+            # Find next case or endcase
+            match = re.search(r'\b(case|endcase)\b', content[pos:])
+            if not match:
+                return None
+                
+            if match.group(1) == 'case':
+                case_count += 1
+            else:
+                case_count -= 1
+                
+            pos += match.end()
+            
+            if case_count == 0:
+                return pos
+                
+        return None
+    
+    def _modify_fsm(self, content: str, case_blocks: List[Tuple[int, int, str]], state_reg: str) -> str:
+        """Modify the FSM to add deadbeef detection"""
         modified_content = content
+        offset = 0  # Track string length changes
         
-        # 1. Add new state parameters
-        param_insert = f"""
+        for start_pos, end_pos, case_content in case_blocks:
+            # Add new parameter definitions before module
+            param_insert = f"""
     // Added deadbeef detection states
-    parameter [{fsm_info.parameter_width-1}:0] DEADBEEF_DETECT_STATE = {fsm_info.parameter_width}'d{len(fsm_info.states)};
-    parameter [{fsm_info.parameter_width-1}:0] SPECIAL_IDLE_STATE = {fsm_info.parameter_width}'d{len(fsm_info.states) + 1};
+    parameter DEADBEEF_DETECT_STATE = {len(self.state_label_patterns) + 1};
+    parameter SPECIAL_IDLE_STATE = {len(self.state_label_patterns) + 2};
 """
-        # Find the last parameter definition
-        last_param = re.search(r'parameter\s+\w+_STATE\s*=.*?;(?!.*parameter\s+\w+_STATE\s*=)', content, re.DOTALL)
-        if last_param:
-            insert_pos = last_param.end()
-            modified_content = modified_content[:insert_pos] + param_insert + modified_content[insert_pos:]
-        
-        # 2. Add deadbeef detection input
-        input_insert = """
-    // Added deadbeef detection input
+            module_match = re.search(r'module\s+\w+\s*\(', modified_content)
+            if module_match:
+                insert_pos = module_match.start()
+                modified_content = modified_content[:insert_pos] + param_insert + modified_content[insert_pos:]
+                offset += len(param_insert)
+            
+            # Add deadbeef input wire
+            input_insert = """
     input wire [31:0] data_in,  // Input to check for deadbeef
 """
-        input_pos = re.search(r'module\s+\w+\s*\(', modified_content).end()
-        modified_content = modified_content[:input_pos] + input_insert + modified_content[input_pos:]
-        
-        # 3. Add deadbeef detection logic in case statement
-        case_pattern = r'(case\s*\(\s*' + fsm_info.state_register + r'_state\s*\))'
-        case_match = re.search(case_pattern, modified_content)
-        if case_match:
-            # Find the end of the case statement
-            case_end = re.search(r'endcase', modified_content[case_match.end():])
-            if case_end:
-                deadbeef_logic = f"""
+            if module_match:
+                insert_pos = module_match.end()
+                modified_content = modified_content[:insert_pos] + input_insert + modified_content[insert_pos:]
+                offset += len(input_insert)
+            
+            # Add new states to case statement
+            deadbeef_states = f"""
             
             DEADBEEF_DETECT_STATE: begin
                 if (data_in == 32'hDEADBEEF) begin
-                    {fsm_info.state_register}_state <= SPECIAL_IDLE_STATE;
+                    {state_reg} <= SPECIAL_IDLE_STATE;
                 end else begin
-                    {fsm_info.state_register}_state <= IDLE_STATE;
+                    {state_reg} <= IDLE;
                 end
             end
             
             SPECIAL_IDLE_STATE: begin
                 // Do nothing, stay in special idle state
-                {fsm_info.state_register}_state <= SPECIAL_IDLE_STATE;
+                {state_reg} <= SPECIAL_IDLE_STATE;
             end
 """
-                insert_pos = case_match.end() + case_end.start()
-                modified_content = (
-                    modified_content[:insert_pos] +
-                    deadbeef_logic +
-                    modified_content[insert_pos:]
-                )
-        
-        # 4. Add transition to deadbeef detection state in other states
-        for state in fsm_info.states:
-            state_pattern = f'({state}.*?:.*?begin)'
-            state_match = re.search(state_pattern, modified_content, re.DOTALL)
-            if state_match:
-                deadbeef_check = f"""
-                // Check for deadbeef value
+            # Find position before endcase
+            endcase_pos = start_pos + offset + case_content.rfind('endcase')
+            modified_content = modified_content[:endcase_pos] + deadbeef_states + modified_content[endcase_pos:]
+            offset += len(deadbeef_states)
+            
+            # Add deadbeef detection to existing states
+            for state_pattern in self.state_label_patterns:
+                for state_match in re.finditer(state_pattern, case_content):
+                    state_name = state_match.group(1)
+                    state_block_start = start_pos + offset + state_match.end()
+                    
+                    # Add deadbeef detection logic to each state
+                    deadbeef_check = f"""
                 if (data_in == 32'hDEADBEEF) begin
-                    {fsm_info.state_register}_state <= DEADBEEF_DETECT_STATE;
-                end else
-"""
-                insert_pos = state_match.end()
-                modified_content = (
-                    modified_content[:insert_pos] +
-                    deadbeef_check +
-                    modified_content[insert_pos:]
-                )
+                    {state_reg} <= DEADBEEF_DETECT_STATE;
+                end else """
+                    
+                    # Find the first state assignment
+                    state_assign = re.search(f'{state_reg}\s*<=', modified_content[state_block_start:end_pos + offset])
+                    if state_assign:
+                        insert_pos = state_block_start + state_assign.start()
+                        modified_content = modified_content[:insert_pos] + deadbeef_check + modified_content[insert_pos:]
+                        offset += len(deadbeef_check)
         
         return modified_content
 
 # Example usage
 if __name__ == "__main__":
-    modifier = FSMModifier()
+    modifier = FSMCaseModifier()
     
     # Modify a single file
-    file_path = Path("./example.v")
-    modifier.modify_fsm(file_path)
+    file_path = Path("/media/iamme/Data/____Contests/2024 CSAW/RTL Code/Project_1_UART_peripheral/rtl_infected/uart_tx.v")
+    if modifier.detect_and_modify_fsm(file_path):
+        print("FSM modification complete!")
+    else:
+        print("No FSM found or modification failed.")
+ 
