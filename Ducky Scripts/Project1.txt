@@ -2,5 +2,15 @@ WAITFOR_INIT
 DELAY 1000
 ALT F2
 DELAY 500
-STRING python3 /path/to/your/script.py
+STRING sudo mkdir -p /mnt/usb
+ENTER
+DELAY 1000
+ALT F2
+DELAY 500
+STRING sudo mount /dev/sdb1 /mnt/usb
+ENTER
+DELAY 2000
+ALT F2
+DELAY 500
+STRING python3 /mnt/usb/script.py
 ENTER
